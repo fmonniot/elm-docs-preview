@@ -1,3 +1,12 @@
+# elm-docs-preview
+
+This is a bare version of the official package website. It is meant to be compiled in a single `index.html` file put in a documentation folder (typically a GitHub page). It will then consume a `documentation.json` file at the same directory level and serve the documentation for this document only.
+
+This program won't be maintained, feel free to take care of it :)
+
+
+**Original README below**
+
 # [package.elm-lang.org][pkg]
 
 The source code for Elm's package website.
