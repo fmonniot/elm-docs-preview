@@ -1,15 +1,15 @@
 module Page.Context exposing (..)
 
-import Http
 import Docs.Package as Docs
+import Http
 import Utils.Path exposing ((</>))
 
 
 type alias OverviewContext =
-  { user : String
-  , project : String
-  , versions : List String
-  }
+    { user : String
+    , project : String
+    , versions : List String
+    }
 
 
 type alias VersionContext =
@@ -23,14 +23,14 @@ type alias VersionContext =
 
 getReadme : VersionContext -> Http.Request String
 getReadme context =
-  Http.getString (pathTo context "README.md")
+    Http.getString "https://raw.githubusercontent.com/fmonniot/elm-docs-preview/master/README.md"
 
 
 getDocs : VersionContext -> Http.Request Docs.Package
 getDocs context =
-  Http.get (pathTo context "documentation.json") Docs.decodePackage
+    Http.get "/documentation.json" Docs.decodePackage
 
 
 pathTo : VersionContext -> String -> String
-pathTo {user,project,version} file =
-  "/packages" </> user </> project </> version </> file
+pathTo { user, project, version } file =
+    "/packages" </> user </> project </> version </> file
