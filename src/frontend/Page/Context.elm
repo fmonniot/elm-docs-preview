@@ -23,7 +23,7 @@ type alias VersionContext =
 
 getReadme : VersionContext -> Http.Request String
 getReadme context =
-    Http.getString "https://raw.githubusercontent.com/fmonniot/elm-docs-preview/master/README.md"
+    Http.getString <| "https://raw.githubusercontent.com" </> context.user </> context.project </> "master/README.md"
 
 
 getDocs : VersionContext -> Http.Request Docs.Package
