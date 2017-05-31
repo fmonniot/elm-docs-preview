@@ -6,6 +6,7 @@ import Http
 import Json.Decode as Json
 import Page.Context as Ctx
 import Page.Package as Pkg
+import Regex
 
 
 -- WIRES
@@ -93,13 +94,25 @@ loadElmPackage =
 decodeVersionContext : Json.Decoder Ctx.VersionContext
 decodeVersionContext =
     let
-        decoder user repo version =
-            Ctx.VersionContext user repo version [] Nothing
+        reg =
+            Regex.regex "https:\\/\\/github\\.com\\/([\\w-_]+)\\/([\\w-_]+)\\.git"
+
+        findIn str =
+            Regex.find Regex.All reg str |> List.concatMap .submatches
+
+        -- TODO Extract this from the repository information. Returning with Json.succeed or Json.fail
+        decoder { repository, version } =
+            case findIn repository of
+                [ Just user, Just repo ] ->
+                    Json.succeed (Ctx.VersionContext user repo version [] Nothing)
+
+                _ ->
+                    Json.fail <| "The repository `" ++ repository ++ "` is not a valid GitHub repo"
     in
-    Json.map3 decoder
-        (Json.at [ "github", "user" ] Json.string)
-        (Json.at [ "github", "repo" ] Json.string)
+    Json.map2 (\a -> \b -> { repository = a, version = b })
+        (Json.at [ "repository" ] Json.string)
         (Json.at [ "version" ] Json.string)
+        |> Json.andThen decoder
 
 
 
