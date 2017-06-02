@@ -1,12 +1,16 @@
 module Reactor exposing (..)
 
+import Component.Header as Header
 import Html exposing (..)
 import Html.Attributes
 import Http
 import Json.Decode as Json
+import Navigation exposing (..)
 import Page.Context as Ctx
 import Page.Package as Pkg
 import Regex
+import Route exposing (R)
+import UrlParser as Url
 
 
 -- WIRES
@@ -14,7 +18,7 @@ import Regex
 
 main : Program Never Model Msg
 main =
-    Html.program
+    Navigation.program loc2msg
         { init = init
         , view = view
         , update = update
@@ -26,12 +30,19 @@ main =
 -- MODEL
 
 
-type Model
+type alias Model =
+    { route : R
+    , content : Content
+    }
+
+
+type Content
     = Loading
     | Failed Http.Error
-    | Success
-        { context : Ctx.VersionContext
+    | Loaded
+        { package : Ctx.ElmPackage
         , model : Pkg.Model
+        , header : Header.Model
         }
 
 
@@ -39,9 +50,13 @@ type Model
 -- INIT
 
 
-init : ( Model, Cmd Msg )
-init =
-    ( Loading, loadElmPackage )
+init : Location -> ( Model, Cmd Msg )
+init loc =
+    let
+        route =
+            Url.parseHash Route.parser loc |> Maybe.withDefault Route.Readme
+    in
+    { route = route, content = Loading } ! [ loadElmPackage ]
 
 
 
@@ -50,36 +65,90 @@ init =
 
 type Msg
     = PkgMsg Pkg.Msg
-    | LoadElmPackage (Result Http.Error Ctx.VersionContext)
+    | LoadElmPackage (Result Http.Error Ctx.ElmPackage)
+    | UrlChange Location
+
+
+loc2msg : Location -> Msg
+loc2msg =
+    UrlChange
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        PkgMsg pkgMsg ->
-            case model of
-                Success thing ->
+        UrlChange loc ->
+            let
+                route =
+                    Url.parseHash Route.parser loc |> Maybe.withDefault Route.Readme
+
+                moduleName =
+                    case route of
+                        Route.Module s ->
+                            Just s
+
+                        _ ->
+                            Nothing
+            in
+            case model.content of
+                Loaded mo ->
                     let
-                        ( updatedModel, fx ) =
+                        ( initModel, initCmd ) =
+                            Pkg.init moduleName mo.package
+
+                        ( header, headerCmd ) =
+                            Header.init mo.package route
+
+                        m =
+                            { mo | package = mo.package, model = initModel, header = header }
+                    in
+                    { model | content = Loaded m, route = route }
+                        ! [ Cmd.map PkgMsg initCmd
+                          , headerCmd
+                          ]
+
+                _ ->
+                    { model | route = route } ! []
+
+        PkgMsg pkgMsg ->
+            case model.content of
+                Loaded thing ->
+                    let
+                        ( updatedModel, msg ) =
                             Pkg.update pkgMsg thing.model
                     in
-                    ( Success { thing | model = updatedModel }, Cmd.map PkgMsg fx )
+                    { model | content = Loaded { thing | model = updatedModel } }
+                        ! [ Cmd.map PkgMsg msg ]
 
                 _ ->
                     model ! []
 
         LoadElmPackage (Err error) ->
-            ( Failed error, Cmd.none )
+            ( { model | content = Failed error }, Cmd.none )
 
-        LoadElmPackage (Ok context) ->
+        LoadElmPackage (Ok elmPackage) ->
             let
+                moduleName =
+                    case model.route of
+                        Route.Module s ->
+                            Just s
+
+                        _ ->
+                            Nothing
+
                 ( initModel, initCmd ) =
-                    Pkg.init context
+                    Pkg.init moduleName elmPackage
+
+                ( header, headerCmd ) =
+                    Header.init elmPackage model.route
 
                 m =
-                    { context = context, model = initModel }
+                    { package = elmPackage, model = initModel, header = header }
             in
-            ( Success m, Cmd.map PkgMsg initCmd )
+            { model | content = Loaded m }
+                ! [ Cmd.map PkgMsg initCmd
+                  , headerCmd
+                  ]
 
 
 
@@ -88,31 +157,7 @@ update msg model =
 
 loadElmPackage : Cmd Msg
 loadElmPackage =
-    Http.send LoadElmPackage (Http.get "/elm-package.json" decodeVersionContext)
-
-
-decodeVersionContext : Json.Decoder Ctx.VersionContext
-decodeVersionContext =
-    let
-        reg =
-            Regex.regex "https:\\/\\/github\\.com\\/([\\w-_]+)\\/([\\w-_]+)\\.git"
-
-        findIn str =
-            Regex.find Regex.All reg str |> List.concatMap .submatches
-
-        -- TODO Extract this from the repository information. Returning with Json.succeed or Json.fail
-        decoder { repository, version } =
-            case findIn repository of
-                [ Just user, Just repo ] ->
-                    Json.succeed (Ctx.VersionContext user repo version [] Nothing)
-
-                _ ->
-                    Json.fail <| "The repository `" ++ repository ++ "` is not a valid GitHub repo"
-    in
-    Json.map2 (\a -> \b -> { repository = a, version = b })
-        (Json.at [ "repository" ] Json.string)
-        (Json.at [ "version" ] Json.string)
-        |> Json.andThen decoder
+    Http.send LoadElmPackage (Http.get "/elm-package.json" Ctx.decodeElmPackage)
 
 
 
@@ -121,13 +166,15 @@ decodeVersionContext =
 
 view : Model -> Html Msg
 view model =
-    case model of
-        Success thing ->
+    case model.content of
+        Loaded content ->
             div []
                 [ Html.node "link" [ Html.Attributes.rel "stylesheet", Html.Attributes.href "/assets/highlight/styles/default.css?1495720958" ] []
                 , Html.node "link" [ Html.Attributes.rel "stylesheet", Html.Attributes.href "/assets/style.css?1495720958" ] []
                 , Html.node "script" [ Html.Attributes.src "/assets/highlight/highlight.pack.js?1495720958" ] []
-                , Html.map PkgMsg <| Pkg.view thing.model
+                , Header.view content.header
+                    [ Html.map PkgMsg <| Pkg.view content.model
+                    ]
                 ]
 
         Loading ->

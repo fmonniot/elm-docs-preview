@@ -8,7 +8,7 @@ var _fmonniot$elm_docs_preview$Native_Jump = function () {
 			if (target === null) {
 				window.location.hash = "";
 			}
-			if (typeof target.scrollIntoView === 'function') {
+			if (target !== null && typeof target.scrollIntoView === 'function') {
 				target.scrollIntoView(true);
 			}
 		}

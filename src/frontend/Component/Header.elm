@@ -3,6 +3,7 @@ module Component.Header exposing (..)
 import Docs.Version as Version
 import Html exposing (..)
 import Html.Attributes exposing (..)
+import Page.Context exposing (ElmPackage, pathToModule)
 import Route exposing (..)
 import Utils.Path as Path exposing ((</>))
 
@@ -11,13 +12,14 @@ import Utils.Path as Path exposing ((</>))
 
 
 type alias Model =
-    { route : Route
+    { package : ElmPackage
+    , route : R
     }
 
 
-init : Route -> ( Model, Cmd msg )
-init route =
-    ( Model route
+init : ElmPackage -> R -> ( Model, Cmd msg )
+init package route =
+    ( Model package route
     , Cmd.none
     )
 
@@ -65,7 +67,7 @@ center color kids =
 headerLinks model =
     h1 [ class "header" ] <|
         a [ href "#", style [ "text-decoration" => "none" ] ] [ logo ]
-            :: unrollRoute model.route
+            :: makeBreadcumb model
 
 
 
@@ -122,83 +124,35 @@ headerLink url words =
 
 
 -- route unrolling
+-- TODO Rename to correct name
 
 
-unrollRoute : Route -> List (Html msg)
-unrollRoute route =
-    case route of
-        Help ->
-            [ text "help" ]
-
-        Packages userRoute ->
-            maybe unrollUserRoute userRoute
-
-
-maybe : (a -> List (Html msg)) -> Maybe a -> List (Html msg)
-maybe unroll maybeRoute =
-    case maybeRoute of
-        Nothing ->
-            []
-
-        Just route ->
-            unroll route
-
-
-unrollUserRoute : UserRoute -> List (Html msg)
-unrollUserRoute (User user packageRoute) =
-    headerLink ("https://github.com" </> user) user
-        :: maybe (unrollPackageRoute user) packageRoute
-
-
-unrollPackageRoute : String -> PackageRoute -> List (Html msg)
-unrollPackageRoute user (Package pkg versionRoute) =
-    spacey "/"
-        :: headerLink ("https://github.com" </> user </> pkg) pkg
-        :: maybe (unrollVersionRoute user pkg) versionRoute
-
-
-unrollVersionRoute : String -> String -> VersionRoute -> List (Html msg)
-unrollVersionRoute user pkg (Version vsn _ moduleRoute) =
-    spacey "/"
-        :: text "master"
-        :: maybe (unrollModuleeRoute user pkg vsn) moduleRoute
-
-
-unrollModuleeRoute : String -> String -> String -> String -> List (Html msg)
-unrollModuleeRoute user pkg vsn name =
-    [ spacey "/"
-    , headerLink ("/packages" </> user </> pkg </> vsn </> Path.hyphenate name) name
-    ]
-
-
-
--- version warnings
--- TODO Remove
-
-
-versionWarning : Model -> List (Html msg)
-versionWarning model =
+makeBreadcumb : Model -> List (Html msg)
+makeBreadcumb model =
     let
-        warning =
-            case model.route of
-                Packages (Just (User user (Just (Package project (Just (Version vsn allVersions maybeName)))))) ->
-                    case Version.realMax vsn allVersions of
-                        Nothing ->
-                            []
+        user =
+            model.package.github.user
 
-                        Just maxVersion ->
-                            let
-                                moduleName =
-                                    Maybe.withDefault "" (Maybe.map Path.hyphenate maybeName)
-                            in
-                            [ p [ class "version-warning" ]
-                                [ text "Warning! The latest version of this package is "
-                                , a [ href ("/packages" </> user </> project </> "latest" </> moduleName) ]
-                                    [ text maxVersion ]
-                                ]
-                            ]
+        project =
+            model.package.github.project
+
+        version =
+            model.package.version
+
+        moduleName =
+            case model.route of
+                Module moduleName ->
+                    [ spacey "/"
+                    , headerLink (pathToModule moduleName) moduleName
+                    ]
 
                 _ ->
                     []
     in
-    [ div [ class "header-underbar" ] warning ]
+    [ headerLink ("http" </> user) user
+    , spacey "/"
+    , headerLink ("https://github.com" </> user </> project) project
+    , spacey "/"
+    , text ("master (" ++ version ++ ")")
+    ]
+        ++ moduleName
